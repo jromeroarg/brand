@@ -19,13 +19,25 @@ class SaleOrder(models.Model):
 
     @api.multi
     def _prepare_invoice(self):
-        for order in self:
-            invoice_vals = super(SaleOrder, order)._prepare_invoice()
-            invoice_vals.update({
-                'brand_id': order.brand_id.id,
-            })
+        invoice_vals = super()._prepare_invoice()
+        invoice_vals.update({
+            'brand_id': self.brand_id.id,
+        })
+        # We remove account_id in order to let account_invoice choose
+        # the right account_id (according to the brand)
+        if 'account_id' in invoice_vals:
+            invoice_vals.pop('account_id')
         return invoice_vals
+
+    @api.onchange('brand_id')
+    def _onchange_brand_id(self):
+        res = super()._onchange_brand_id()
+        for order in self:
+            if order.state == 'draft' and order.brand_id:
+                order.analytic_account_id = order.brand_id.analytic_account_id
+        return res
 
     @api.onchange('team_id')
     def _onchange_team_id(self):
-        self.brand_id = self.team_id.brand_id
+        if not self.brand_id and self.team_id.brand_id:
+            self.brand_id = self.team_id.brand_id
